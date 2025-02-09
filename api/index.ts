@@ -1,39 +1,55 @@
-import { createServer, IncomingMessage, ServerResponse } from "http";
-import { Server } from "http";
-import { AppModule } from "../src/app.module"; // Adjust if needed
-import { NestFactory } from "@nestjs/core";
+import { VercelRequest, VercelResponse } from '@vercel/node';
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from '../src/app.module';
+import { once } from 'events';
 
-// We'll store the Node server here for re-use (to enable fast starts).
-let server: Server;
+let cachedServer: any;
 
-/**
- * This function boots the NestJS app exactly once, then reuses it.
- */
-async function bootstrapServer(): Promise<Server> {
-  if (server) {
-    return server;
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (!cachedServer) {
+    try {
+      const app = await NestFactory.create(AppModule);
+      // (Optional) Apply any global pipes, filters, or middleware here.
+      await app.init();
+      // Cache the underlying HTTP server instance from Nest
+      cachedServer = app.getHttpAdapter().getInstance();
+    } catch (error) {
+      console.error("Error bootstrapping Nest application:", error);
+      res.status(500).send("Error bootstrapping Nest application");
+      return;
+    }
   }
 
-  // Create a Nest application from your compiled AppModule
-  const app = await NestFactory.create(AppModule);
+  // Emit the request to the NestJS server.
+  try {
+    cachedServer.emit("request", req, res);
+  } catch (error) {
+    console.error("Error emitting request to Nest server:", error);
+    res.status(500).send("Internal server error");
+    return;
+  }
 
-  // (Optional) apply any global pipes, filters, etc. if needed
-  // app.useGlobalPipes(new ValidationPipe());
+  // Wait for the response to finish by listening for the 'finish' or 'close' event.
+  // Also use a timeout to force resolution if nothing fires within 10 seconds.
+  await new Promise<void>((resolve) => {
+    let resolved = false;
+    const finishHandler = () => {
+      if (!resolved) {
+        resolved = true;
+        resolve();
+      }
+    };
 
-  // Initialize the app (but don't call .listen())
-  await app.init();
+    res.once('finish', finishHandler);
+    res.once('close', finishHandler);
 
-  // Create an HTTP server from the Nest app's handler
-  const expressApp = app.getHttpAdapter().getInstance();
-  server = createServer(expressApp);
-
-  return server;
-}
-
-/**
- * Vercel will call this exported function (the serverless "handler") for every request.
- */
-export default async function handler(req: IncomingMessage, res: ServerResponse) {
-  const s = await bootstrapServer();
-  s.emit("request", req, res);
+    // Fallback timeout: after 10 seconds, if the response hasn't ended, force it.
+    setTimeout(() => {
+      if (!res.writableEnded) {
+        console.warn("Timeout reached, forcing response end.");
+        res.end();
+      }
+      finishHandler();
+    }, 10000);
+  });
 }
