@@ -2,13 +2,12 @@ import { VercelRequest, VercelResponse } from "@vercel/node";
 import { TriggerClient, cronTrigger } from "@trigger.dev/sdk";
 import axios from "axios";
 
-// Create the TriggerClient with your API key
 const client = new TriggerClient({
   id: "my-vercel-trigger-client",
-  apiKey: process.env.TRIGGER_API_KEY!, // must be set in Vercel environment variables
+  apiKey: process.env.TRIGGER_API_KEY!, // ensure TRIGGER_API_KEY is set in Vercel
 });
 
-// Define the cron job inline
+// Define the job inline
 client.defineJob({
   id: "fetch-google-meet-at-midnight",
   name: "Fetch Google Meet at Midnight",
@@ -45,36 +44,42 @@ client.defineJob({
 });
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Force the method to POST regardless of the incoming method,
-  // since Trigger.dev expects a POST request.
+  // Force the method to POST regardless of the incoming request method.
   const method = "POST";
-  // Clone the incoming headers and force an x-trigger-action header if missing.
+
+  // Clone the incoming headers into a new Headers object.
   const customHeaders = new Headers(req.headers as any);
+  // Ensure the x-trigger-action header is present.
   if (!customHeaders.has("x-trigger-action")) {
     customHeaders.set("x-trigger-action", "my-cron");
   }
 
+  // Build the full URL based on the incoming request.
   const url = `https://${req.headers.host}${req.url}`;
+
+  // Build the RequestInit object.
+  // For POST requests, we include an empty string body and set duplex to 'half'
   const fetchRequestInit: RequestInit = {
     method,
     headers: customHeaders,
-    // We omit a body for GET/POST since our endpoint does not require one.
+    body: "", // supply an empty string so a body is present
+    duplex: "half" as any, // required for Node 18 when sending a body
   };
 
   const fetchRequest = new Request(url, fetchRequestInit);
 
-  // Call handleRequest.
-  // We force a type cast here to allow our options if needed.
+  // Call handleRequest; we cast client to any if needed to bypass type issues.
   const triggerResponse = await (client as any).handleRequest(fetchRequest);
 
+  // Set the response status and headers.
   res.status(triggerResponse.status || 200);
-
   if (triggerResponse.headers) {
     for (const [key, value] of Object.entries(triggerResponse.headers)) {
       res.setHeader(key, String(value));
     }
   }
 
+  // Send the response body.
   if (typeof triggerResponse.body === "string") {
     res.send(triggerResponse.body);
   } else {
