@@ -2,18 +2,19 @@ import { VercelRequest, VercelResponse } from "@vercel/node";
 import { TriggerClient, cronTrigger } from "@trigger.dev/sdk";
 import axios from "axios";
 
+// Create the TriggerClient with your API key
 const client = new TriggerClient({
   id: "my-vercel-trigger-client",
-  apiKey: process.env.TRIGGER_API_KEY!, // must be set in Vercel env
+  apiKey: process.env.TRIGGER_API_KEY!, // must be set in Vercel environment variables
 });
 
-// 1) Define your cron job
+// Define the cron job inline
 client.defineJob({
   id: "fetch-google-meet-at-midnight",
   name: "Fetch Google Meet at Midnight",
   version: "1.0.0",
   trigger: cronTrigger({
-    // Example: run daily at 05:10 UTC
+    // Example: runs daily at 05:10 UTC
     cron: "10 5 * * *",
   }),
   run: async (payload, io, ctx) => {
@@ -43,35 +44,34 @@ client.defineJob({
   },
 });
 
-// 2) Serverless function for Vercel
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Force an x-trigger-action header if missing, to satisfy older Trigger.dev versions
+  // Force the method to POST regardless of the incoming method,
+  // since Trigger.dev expects a POST request.
+  const method = "POST";
+  // Clone the incoming headers and force an x-trigger-action header if missing.
   const customHeaders = new Headers(req.headers as any);
   if (!customHeaders.has("x-trigger-action")) {
     customHeaders.set("x-trigger-action", "my-cron");
   }
 
   const url = `https://${req.headers.host}${req.url}`;
-  const method = req.method || "GET";
-
   const fetchRequestInit: RequestInit = {
     method,
     headers: customHeaders,
-    // We omit 'body' and 'duplex' for GET requests
+    // We omit a body for GET/POST since our endpoint does not require one.
   };
 
   const fetchRequest = new Request(url, fetchRequestInit);
 
-  // 3) Call handleRequest with just the fetchRequest argument
+  // Call handleRequest.
+  // We force a type cast here to allow our options if needed.
   const triggerResponse = await (client as any).handleRequest(fetchRequest);
 
-  // 4) Apply the result to Vercel response
   res.status(triggerResponse.status || 200);
 
   if (triggerResponse.headers) {
-    // Convert unknown => string for TypeScript
-    for (const [key, val] of Object.entries(triggerResponse.headers)) {
-      res.setHeader(key, String(val));
+    for (const [key, value] of Object.entries(triggerResponse.headers)) {
+      res.setHeader(key, String(value));
     }
   }
 
