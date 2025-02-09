@@ -4,7 +4,7 @@ import axios from "axios";
 
 const client = new TriggerClient({
   id: "my-vercel-trigger-client",
-  apiKey: process.env.TRIGGER_API_KEY!, // ensure TRIGGER_API_KEY is set in Vercel
+  apiKey: process.env.TRIGGER_API_KEY!, // ensure TRIGGER_API_KEY is set in Vercel env
 });
 
 // Define the job inline
@@ -44,34 +44,32 @@ client.defineJob({
 });
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Force the method to POST regardless of the incoming request method.
+  // Force the HTTP method to POST to avoid "Method not allowed" errors
   const method = "POST";
 
-  // Clone the incoming headers into a new Headers object.
+  // Clone the incoming headers and ensure the x-trigger-action header is set.
   const customHeaders = new Headers(req.headers as any);
-  // Ensure the x-trigger-action header is present.
   if (!customHeaders.has("x-trigger-action")) {
     customHeaders.set("x-trigger-action", "my-cron");
   }
 
-  // Build the full URL based on the incoming request.
   const url = `https://${req.headers.host}${req.url}`;
 
   // Build the RequestInit object.
-  // For POST requests, we include an empty string body and set duplex to 'half'
-  const fetchRequestInit: RequestInit = {
+  // Since TypeScript doesn't allow the 'duplex' property in RequestInit,
+  // we cast the object to any.
+  const fetchRequestInit: any = {
     method,
     headers: customHeaders,
-    body: "", // supply an empty string so a body is present
-    duplex: "half" as any, // required for Node 18 when sending a body
+    body: "", // Provide an empty body
+    duplex: "half", // Required in Node 18 when sending a body
   };
 
   const fetchRequest = new Request(url, fetchRequestInit);
 
-  // Call handleRequest; we cast client to any if needed to bypass type issues.
+  // Call handleRequest (casting client to any if needed to bypass type issues)
   const triggerResponse = await (client as any).handleRequest(fetchRequest);
 
-  // Set the response status and headers.
   res.status(triggerResponse.status || 200);
   if (triggerResponse.headers) {
     for (const [key, value] of Object.entries(triggerResponse.headers)) {
@@ -79,7 +77,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // Send the response body.
   if (typeof triggerResponse.body === "string") {
     res.send(triggerResponse.body);
   } else {
