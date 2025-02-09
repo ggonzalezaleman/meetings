@@ -48,8 +48,14 @@ export class AppController {
         return { message: 'No relevant Google Meet activities found for the specified date.' };
       }
 
-      // 4. Push the enriched data into Tinybird.
-      await this.tinybirdIngestionService.pushData(simplified);
+      // Convert isExternal -> 0/1
+      const dataForTinybird = simplified.map(item => ({
+        ...item,
+        isExternal: item.isExternal ? 1 : 0,
+      }));
+
+      // Now push
+      await this.tinybirdIngestionService.pushData(dataForTinybird);
 
       return { message: 'Data pushed to Tinybird successfully.' };
     } catch (error) {
