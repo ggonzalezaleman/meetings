@@ -1,6 +1,6 @@
 import { createServer, IncomingMessage, ServerResponse } from "http";
 import { Server } from "http";
-import { AppModule } from "../dist/app.module"; // Adjust if needed
+import { AppModule } from "../src/app.module"; // Adjust if needed
 import { NestFactory } from "@nestjs/core";
 
 // We'll store the Node server here for re-use (to enable fast starts).
