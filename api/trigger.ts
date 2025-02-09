@@ -1,56 +1,49 @@
 import { VercelRequest, VercelResponse } from "@vercel/node";
-// Use the built-in fetch (available in Node 18+) or install node-fetch if needed.
-// import fetch from 'node-fetch';
+import axios from "axios";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Only allow POST requests (Trigger.dev will call via POST)
+  // Allow only POST requests for triggering.
   if (req.method !== "POST") {
-    res.status(405).json({ message: "Method not allowed" });
+    res.status(405).json({ message: "Method not allowed. Use POST." });
     return;
   }
-
+  
   try {
-    // Determine the base URL for your NestJS API.
-    // Use the environment variable NEST_APP_URL if provided; otherwise, default to localhost.
-    let nestUrl = process.env.NEST_APP_URL || "http://localhost:3000";
-    
-    // Use HTTP for localhost; otherwise, ensure the URL has a protocol.
-    if (nestUrl.includes("localhost")) {
-      nestUrl = nestUrl.replace("https://", "http://");
-    } else if (!nestUrl.startsWith("http://") && !nestUrl.startsWith("https://")) {
-      nestUrl = `https://${nestUrl}`;
-    }
-
     // Calculate yesterday's date in YYYY-MM-DD format.
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(today.getDate() - 1);
-    const dateParam = yesterday.toISOString().split("T")[0]; // e.g. "2025-02-07"
-
-    // Build the full endpoint URL.
+    const dateParam = yesterday.toISOString().split("T")[0];
+    
+    // Use the environment variable for your NestJS API URL.
+    // IMPORTANT: Make sure that NEST_APP_URL is set to the root URL where your NestJS app is served.
+    // For example, if your Nest app is served via api/index.ts and routes are available at the root,
+    // set NEST_APP_URL=https://litebox-meetings-backend.vercel.app
+    const nestUrl = process.env.NEST_APP_URL;
+    if (!nestUrl) {
+      throw new Error("NEST_APP_URL is not defined in environment variables");
+    }
+    
+    // Build the endpoint URL for push-meet-activities.
+    // Since your NestJS endpoint for push-meet-activities is defined with @Get,
+    // we must use GET to call it.
     const endpoint = `${nestUrl}/push-meet-activities?date=${dateParam}`;
     console.log(`Trigger function calling: ${endpoint}`);
-
-    // Call the NestJS endpoint.
-    const response = await fetch(endpoint);
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`HTTP error! status: ${response.status} response: ${errorText}`);
-    }
-    const data = await response.json();
-    console.log("Data pushed successfully:", data);
-
-    // Return a JSON response indicating success.
+    
+    // Make a GET request to your NestJS endpoint.
+    const response = await axios.get(endpoint);
+    console.log("Response from push-meet-activities:", response.data);
+    
     res.status(200).json({
       success: true,
-      message: `Data pushed successfully for date: ${dateParam}`,
-      data,
+      message: `Successfully triggered push-meet-activities for date ${dateParam}`,
+      data: response.data,
     });
   } catch (error: any) {
-    console.error("Error in trigger function:", error);
+    console.error("Error triggering push-meet-activities:", error);
     res.status(500).json({
       success: false,
-      message: error.message || "Failed to push data.",
+      message: error.message || "An error occurred while triggering push-meet-activities.",
     });
   }
 }
