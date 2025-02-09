@@ -4,16 +4,17 @@ import axios from "axios";
 
 const client = new TriggerClient({
   id: "my-vercel-trigger-client",
-  apiKey: process.env.TRIGGER_API_KEY!, // set in Vercel env
+  apiKey: process.env.TRIGGER_API_KEY!, // must be set in Vercel env
 });
 
-// Define the job inline
+// 1) Define your cron job
 client.defineJob({
   id: "fetch-google-meet-at-midnight",
   name: "Fetch Google Meet at Midnight",
   version: "1.0.0",
   trigger: cronTrigger({
-    cron: "10 5 * * *", // Example: runs daily at 05:10 UTC
+    // Example: run daily at 05:10 UTC
+    cron: "10 5 * * *",
   }),
   run: async (payload, io, ctx) => {
     const nestUrl = process.env.NEST_APP_URL;
@@ -42,30 +43,35 @@ client.defineJob({
   },
 });
 
+// 2) Serverless function for Vercel
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Build a fetch-style request
+  // Force an x-trigger-action header if missing, to satisfy older Trigger.dev versions
+  const customHeaders = new Headers(req.headers as any);
+  if (!customHeaders.has("x-trigger-action")) {
+    customHeaders.set("x-trigger-action", "my-cron");
+  }
+
   const url = `https://${req.headers.host}${req.url}`;
   const method = req.method || "GET";
 
   const fetchRequestInit: RequestInit = {
     method,
-    headers: new Headers(req.headers as any),
+    headers: customHeaders,
+    // We omit 'body' and 'duplex' for GET requests
   };
 
   const fetchRequest = new Request(url, fetchRequestInit);
 
-  // Cast to any so we can pass an object with `requireActions: false`
-  // to skip 'x-trigger-action' requirement
-  const triggerResponse = await (client as any).handleRequest(fetchRequest, {
-    requireActions: false,
-  });
+  // 3) Call handleRequest with just the fetchRequest argument
+  const triggerResponse = await (client as any).handleRequest(fetchRequest);
 
+  // 4) Apply the result to Vercel response
   res.status(triggerResponse.status || 200);
 
   if (triggerResponse.headers) {
-    for (const [key, value] of Object.entries(triggerResponse.headers)) {
-      // Convert the unknown value to a string
-      res.setHeader(key, String(value));
+    // Convert unknown => string for TypeScript
+    for (const [key, val] of Object.entries(triggerResponse.headers)) {
+      res.setHeader(key, String(val));
     }
   }
 
