@@ -13,8 +13,7 @@ client.defineJob({
   name: "Fetch Google Meet at Midnight",
   version: "1.0.0",
   trigger: cronTrigger({
-    // Example: runs at 05:10 UTC every day
-    cron: "10 5 * * *",
+    cron: "10 5 * * *", // Example: runs daily at 05:10 UTC
   }),
   run: async (payload, io, ctx) => {
     const nestUrl = process.env.NEST_APP_URL;
@@ -44,28 +43,29 @@ client.defineJob({
 });
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Build a fetch-style request, but do NOT pass the raw Vercel request as the body.
+  // Build a fetch-style request
   const url = `https://${req.headers.host}${req.url}`;
   const method = req.method || "GET";
 
-  // We won't attach a body or duplex because VercelRequest isn't valid BodyInit
   const fetchRequestInit: RequestInit = {
     method,
     headers: new Headers(req.headers as any),
-    // no 'body' or 'duplex' property here
   };
 
   const fetchRequest = new Request(url, fetchRequestInit);
 
-  // Let Trigger.dev handle the request
-  const triggerResponse = await client.handleRequest(fetchRequest);
+  // Cast to any so we can pass an object with `requireActions: false`
+  // to skip 'x-trigger-action' requirement
+  const triggerResponse = await (client as any).handleRequest(fetchRequest, {
+    requireActions: false,
+  });
 
-  // Convert the Trigger.dev style response back to a Node/Vercel response
   res.status(triggerResponse.status || 200);
 
   if (triggerResponse.headers) {
     for (const [key, value] of Object.entries(triggerResponse.headers)) {
-      res.setHeader(key, value);
+      // Convert the unknown value to a string
+      res.setHeader(key, String(value));
     }
   }
 
