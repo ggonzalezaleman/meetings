@@ -1,45 +1,39 @@
-import { Job, cronTrigger } from "@trigger.dev/sdk";
+import { schedules, logger } from "@trigger.dev/sdk/v3";
 import axios from "axios";
 
-const NEST_APP_URL = process.env.NEST_APP_URL;
-if (!NEST_APP_URL) {
-  throw new Error("NEST_APP_URL is not defined in environment variables");
-}
-
-export const fetchGoogleMeetAtMidnight = new Job({
-  // A unique ID for this job
-  id: "fetch-google-meet-at-midnight",
-  // Provide a descriptive name
-  name: "Fetch Google Meet at Midnight",
-  // Provide a job version (e.g., "1.0.0" or "0.0.1")
-  version: "1.0.0",
-
-  // The trigger: run every day at midnight UTC
-  trigger: cronTrigger({
-    cron: "10 5 * * *",
-  }),
-
-  // The main job function
-  run: async (payload, io, ctx) => {
-    // Determine "yesterday's" date in YYYY-MM-DD
-    const today = new Date();
-    const yesterdaysDate = new Date(today);
-    yesterdaysDate.setDate(today.getDate() - 1);
-    const dateParam = yesterdaysDate.toISOString().split("T")[0];
-
-    // Build the NestJS endpoint URL
-    const url = `${NEST_APP_URL}/push-meet-activities?date=${dateParam}`;
-    io.logger.info(`Trigger.dev is calling: ${url}`);
-
-    try {
-      // Make the HTTP GET request to your NestJS endpoint
-      const response = await axios.get(url);
-      io.logger.info(`NestJS response: ${JSON.stringify(response.data)}`);
-    } catch (error: any) {
-      io.logger.error(`Failed to push Google Meet activities: ${error.message}`);
-      throw error;
+// This task runs every day at 05:10 UTC and calls your NestJS endpoint
+// to push yesterday’s Google Meet activities.
+export const fetchGoogleMeetAtMidnight = schedules.task({
+  id: "fetch-google-meet-at-midnight",   // Unique task ID
+  cron: "0 3 * * *",                    // Runs every day at 05:10 UTC
+  maxDuration: 300,                      // Optional: maximum duration in seconds (5 minutes)
+  run: async (payload) => {
+    // The payload contains scheduling metadata, including timestamp.
+    // Use payload.timestamp as the scheduled run time.
+    const scheduledTime = payload.timestamp;
+    
+    // Calculate yesterday's date based on the scheduled timestamp.
+    const yesterday = new Date(scheduledTime);
+    yesterday.setDate(scheduledTime.getDate() - 1);
+    const dateParam = yesterday.toISOString().split("T")[0]; // "YYYY-MM-DD"
+    
+    // Get the NestJS API URL from environment variables.
+    // Make sure that in your environment (Vercel dashboard) NEST_APP_URL is set to the URL
+    // where your NestJS app is deployed (e.g., "https://litebox-meetings-backend.vercel.app")
+    const nestUrl = process.env.NEST_APP_URL;
+    if (!nestUrl) {
+      throw new Error("NEST_APP_URL is not defined in environment variables");
     }
-
+    
+    // Build the full URL for the push-meet-activities endpoint.
+    const endpoint = `${nestUrl}/push-meet-activities?date=${dateParam}`;
+    logger.info(`Trigger task calling endpoint: ${endpoint}`);
+    
+    // Call your NestJS endpoint.
+    const response = await axios.get(endpoint);
+    logger.info(`NestJS response: ${JSON.stringify(response.data)}`);
+    
+    // Return any data or a message (this will show in the Trigger.dev dashboard logs).
     return { message: "Successfully fetched and pushed yesterday's Meet activities." };
-  },
+  }
 });
