@@ -5,7 +5,7 @@ import axios from "axios";
 // to push yesterday’s Google Meet activities.
 export const fetchGoogleMeetAtMidnight = schedules.task({
   id: "fetch-google-meet-at-midnight",   // Unique task ID
-  cron: "0 3 * * *",                    // Runs every day at 05:10 UTC
+  cron: "0 4 * * *",                    // Runs every day at 05:10 UTC
   maxDuration: 300,                      // Optional: maximum duration in seconds (5 minutes)
   run: async (payload) => {
     // The payload contains scheduling metadata, including timestamp.
