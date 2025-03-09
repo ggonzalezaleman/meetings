@@ -5,10 +5,10 @@ import { JWT } from 'google-auth-library';
 @Injectable()
 export class CalendarService {
   private readonly logger = new Logger(CalendarService.name);
-  private calendar;
+  private calendar: any;
 
   constructor() {
-    // Read the service account key from environment variables
+    // 1) Parse service account key from environment
     const serviceAccountKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
     if (!serviceAccountKey) {
       throw new Error('Missing GOOGLE_SERVICE_ACCOUNT_KEY in environment variables');
@@ -21,67 +21,108 @@ export class CalendarService {
       throw new Error('Invalid JSON format for GOOGLE_SERVICE_ACCOUNT_KEY');
     }
 
-    // Retrieve the admin email used for domain-wide delegation.
-    // This is who we impersonate by default, but you could override dynamically if needed.
+    // 2) Admin email for domain-wide delegation
     const adminEmail = process.env.GOOGLE_ADMIN_EMAIL;
     if (!adminEmail) {
       throw new Error('Missing GOOGLE_ADMIN_EMAIL in environment variables');
     }
 
-    // Initialize JWT for Calendar API with the calendar.readonly scope
-    // By default, impersonates adminEmail as the subject
+    // 3) Auth setup (JWT)
     const auth = new google.auth.JWT({
       email: keyFile.client_email,
       key: keyFile.private_key,
       scopes: ['https://www.googleapis.com/auth/calendar.readonly'],
-      subject: adminEmail,
+      subject: adminEmail, // Impersonate the admin or a domain user
     });
 
-    // Create a Calendar API client
+    // 4) Create a Google Calendar client
     this.calendar = google.calendar({ version: 'v3', auth });
   }
 
   /**
-   * Gets the event summary (meeting name) from the specified calendar ID,
-   * handling recurring event suffixes if needed.
-   * 
-   * @param calendarId - e.g. the organizer's email or 'primary'
-   * @param eventId - possibly with a _2025... suffix for recurring events
-   * @returns The event summary or an empty string if not found
+   *-------------------------------------------------------------------------
+   * Method A) getEventTitle
+   *-------------------------------------------------------------------------
+   * Returns only the "summary" of an event (meeting name).
+   * Used by controllers when we only need the event title.
    */
   async getEventTitle(calendarId: string, eventId: string): Promise<string> {
-    this.logger.log(`Fetching event title for eventId: ${eventId} on calendar: ${calendarId}`);
-    // 1) Attempt the full ID
+    // We can re-use the logic from getEventDetails
+    const details = await this.getEventDetails(calendarId, eventId);
+    return details.summary || '';
+  }
+
+  /**
+   *-------------------------------------------------------------------------
+   * Method B) getEventDetails
+   *-------------------------------------------------------------------------
+   * Returns the event summary + attendees. Automatically falls back to
+   * the base ID if the recurring suffix (_2025...) fails with 404.
+   */
+  async getEventDetails(
+    calendarId: string,
+    eventId: string,
+  ): Promise<{
+    summary: string;
+    attendees: { email: string; displayName?: string; responseStatus: string }[];
+  }> {
+    this.logger.log(`Fetching event details for eventId: ${eventId} on calendar: ${calendarId}`);
+
     try {
+      // 1) Attempt to fetch the event (possibly recurring)
       const response = await this.calendar.events.get({ calendarId, eventId });
-      const summary = response.data.summary || '';
-      this.logger.log(`Fetched summary: "${summary}" for eventId: ${eventId}`);
-      return summary;
+      const eventData = response.data;
+      const summary = eventData.summary || '';
+
+      // 2) Map attendees
+      const attendees = (eventData.attendees || []).map((a: any) => ({
+        email: a.email,
+        displayName: a.displayName,
+        responseStatus: a.responseStatus, // "accepted", "tentative", "needsAction", "declined", etc.
+      }));
+
+      this.logger.log(
+        `Fetched summary="${summary}" with ${attendees.length} attendees for eventId="${eventId}".`,
+      );
+      return { summary, attendees };
     } catch (error: any) {
-      // If 404, try removing the recurrence suffix
+      // 3) If 404, try removing the recurrence suffix (the part after underscore)
       if (error?.response?.status === 404) {
         const baseId = eventId.split('_')[0];
         if (baseId !== eventId) {
-          this.logger.warn(`404 for eventId: ${eventId}; attempting base ID: ${baseId}`);
+          this.logger.warn(
+            `404 for eventId="${eventId}"; attempting base ID="${baseId}"`,
+          );
           try {
             const response2 = await this.calendar.events.get({
               calendarId,
               eventId: baseId,
             });
-            const summary2 = response2.data.summary || '';
-            this.logger.log(`Fetched summary (base ID): "${summary2}" for eventId: ${baseId}`);
-            return summary2;
+            const eventData2 = response2.data;
+            const summary2 = eventData2.summary || '';
+            const attendees2 = (eventData2.attendees || []).map((a: any) => ({
+              email: a.email,
+              displayName: a.displayName,
+              responseStatus: a.responseStatus,
+            }));
+
+            this.logger.log(
+              `Fetched summary="${summary2}" with ${attendees2.length} attendee(s) using baseId="${baseId}".`,
+            );
+            return { summary: summary2, attendees: attendees2 };
           } catch (error2: any) {
-            this.logger.error(`Still not found for base ID: ${baseId}`, error2);
-            return '';
+            this.logger.error(`Still not found for base ID="${baseId}"`, error2);
+            return { summary: '', attendees: [] };
           }
         }
       }
+
+      // 4) Any other error
       this.logger.error(
-        `Error fetching event ${eventId} from calendar ${calendarId}`,
-        error
+        `Error fetching event="${eventId}" from calendar="${calendarId}"`,
+        error,
       );
-      return '';
+      return { summary: '', attendees: [] };
     }
   }
 }

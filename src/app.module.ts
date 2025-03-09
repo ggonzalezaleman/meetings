@@ -9,6 +9,7 @@ import { FetchDateRangeController } from './fetch-date-range.controller';
 import { PeopleForceService } from './peopleforce.service';
 import { PeopleForceController } from './peopleforce.controller';
 import { TinybirdEmployeeIngestionService } from './tinybird-employee-ingestion.service';
+import { SingleMeetService } from './single-meet.service';
 
 @Module({
   imports: [ConfigModule.forRoot()],
@@ -20,6 +21,7 @@ import { TinybirdEmployeeIngestionService } from './tinybird-employee-ingestion.
     CalendarService,
     PeopleForceService,
     TinybirdEmployeeIngestionService,
+    SingleMeetService,
   ],
 })
 export class AppModule {}

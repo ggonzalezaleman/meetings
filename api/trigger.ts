@@ -27,7 +27,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Build the endpoint URL for push-meet-activities.
     // Since your NestJS endpoint for push-meet-activities is defined with @Get,
     // we must use GET to call it.
-    const endpoint = `${nestUrl}/push-meet-activities?date=${dateParam}`;
+    const endpoint = `${nestUrl}/fetch-date-range?start=${dateParam}&end=${dateParam}`;
     console.log(`Trigger function calling: ${endpoint}`);
     
     // Make a GET request to your NestJS endpoint.
