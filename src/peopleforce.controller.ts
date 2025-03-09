@@ -12,24 +12,30 @@ export class PeopleForceController {
   /**
    * GET /peopleforce/push
    * This endpoint fetches PeopleForce employee data, transforms it,
-   * and pushes it into Tinybird using the employee data source.
+   * and replaces all existing Tinybird data with the new data.
    */
   @Get('push')
   async pushEmployees() {
     try {
       const employees = await this.peopleForceService.getTransformedEmployees();
+      
       if (employees.length === 0) {
         return { message: 'No employee data found from PeopleForce.' };
       }
 
+      // 1. Remove all existing data in Tinybird
+      await this.tinybirdEmployeeIngestionService.deleteAllData();
+
+      // 2. Push the new data set
       await this.tinybirdEmployeeIngestionService.pushData(employees);
+
       return {
-        message: 'Employee data pushed to Tinybird successfully.',
+        message: 'Employee data replaced in Tinybird successfully.',
         totalEmployees: employees.length,
       };
     } catch (error: any) {
       throw new HttpException(
-        error.message || 'Failed to push employee data to Tinybird',
+        error.message || 'Failed to replace employee data in Tinybird',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

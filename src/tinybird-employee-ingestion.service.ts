@@ -9,6 +9,24 @@ export class TinybirdEmployeeIngestionService {
   private readonly tinybirdDataSource = process.env.TINYBIRD_EMPLOYEE_DATA_SOURCE;
   private readonly tinybirdUrl = process.env.TINYBIRD_URL || 'https://api.tinybird.co/v0/events';
 
+  async deleteAllData(): Promise<void> {
+    const datasourceName = 'peopleforce_employees'; 
+    const url = `https://api.us-east.aws.tinybird.co/v0/datasources/${datasourceName}/truncate`;
+
+    try {
+      await axios.post(url, null, {
+        headers: {
+          Authorization: `Bearer ${this.tinybirdToken}`,
+        },
+      });
+      this.logger.log(`Truncated datasource "${datasourceName}" successfully.`);
+    } catch (error: any) {
+      this.logger.error(`Failed to truncate datasource "${datasourceName}".`, error);
+      throw error;
+    }
+  }
+
+
   /**
    * Pushes an array of data objects to Tinybird using NDJSON ingestion.
    * @param data An array of JSON objects to be ingested.
